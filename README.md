@@ -29,7 +29,7 @@ A legacy RTSP-ANNOUNCE talk-back path exists for Gen 1 cameras and can be opted 
 
 - [Homebridge](https://homebridge.io) v1.11+ or v2.0+
 - Node.js 20+ or 22+
-- [FFmpeg](https://ffmpeg.org/) installed on the system
+- [FFmpeg](https://ffmpeg.org/): the plugin uses, in order, `FFMPEG_PATH`, the bundled [`ffmpeg-for-homebridge`](https://github.com/homebridge/ffmpeg-for-homebridge) dependency (a static build with `libfdk_aac` for HomeKit audio; installed automatically on supported platforms), or `ffmpeg` on the PATH
 - A Nanit account with at least one camera
 
 ## Installation
