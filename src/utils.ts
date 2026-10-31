@@ -1,4 +1,6 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import type { Logging } from 'homebridge';
 
 export class FfmpegProcess {
@@ -79,8 +81,23 @@ export class FfmpegProcess {
   }
 }
 
+/**
+ * Locates FFmpeg, in order of preference:
+ * 1. FFMPEG_PATH environment variable
+ * 2. the bundled ffmpeg-for-homebridge dependency, when it provides a binary
+ *    for this platform: a static build that includes libfdk_aac, the encoder
+ *    HomeKit's AAC-ELD audio needs
+ * 3. `ffmpeg` on the PATH
+ */
 export function findFfmpeg(): string {
-  return process.env.FFMPEG_PATH || 'ffmpeg';
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  try {
+    const bundled: unknown = createRequire(import.meta.url)('ffmpeg-for-homebridge');
+    if (typeof bundled === 'string' && existsSync(bundled)) return bundled;
+  } catch {
+    // No binary for this platform, or the package is missing.
+  }
+  return 'ffmpeg';
 }
 
 /**
