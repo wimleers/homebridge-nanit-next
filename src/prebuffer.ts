@@ -136,6 +136,9 @@ export class NanitPrebuffer {
       streamUrl = source.url;
       this.streamSource = source.type;
     } catch (err) {
+      // A launch overtaken by a pause or a newer launch owns no retry: the
+      // newer launch is running, and a retry here would start a second FFmpeg.
+      if (this.destroyed || !this.active || generation !== this.launchGeneration) return;
       this.log.warn(`[${this.cameraName}] Prebuffer: failed to get stream source, will retry:`, err);
       this.scheduleRestart();
       return;
@@ -218,10 +221,12 @@ export class NanitPrebuffer {
     });
 
     proc.on('close', (code) => {
-      if (this.ffmpeg === proc) {
-        this.ffmpeg = null;
-        this.streamSource = null;
-      }
+      // A process that is no longer the current one was killed on purpose
+      // (pause, stop) or superseded by a newer launch; only the current
+      // process's exit is unexpected and earns a restart.
+      if (this.ffmpeg !== proc) return;
+      this.ffmpeg = null;
+      this.streamSource = null;
       if (this.active && !this.destroyed && !this.pausedForSleep) {
         this.log.warn(`[${this.cameraName}] Prebuffer FFmpeg exited (code=${code}), restarting...`);
         this.scheduleRestart();
