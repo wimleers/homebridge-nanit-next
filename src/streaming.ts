@@ -50,6 +50,8 @@ interface SessionInfo {
 }
 
 interface ActiveSession {
+  /** Where the camera sends this view's video: the local RTMP server or Nanit's cloud. */
+  source: 'local' | 'cloud';
   mainProcess?: FfmpegProcess;
   returnProcess?: FfmpegProcess;
   timeout?: ReturnType<typeof setTimeout>;
@@ -62,6 +64,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly videoProcessor: string;
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
+  /** Sessions between the start request and the choice of their source. */
+  private readonly startingSessions = new Set<string>();
   private cachedSnapshot: Buffer | null = null;
   /** Dark placeholder shown while the camera is switched off; rendered once, lazily. */
   private cameraOffSnapshot: Promise<Buffer | null> | null = null;
@@ -82,9 +86,16 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
    */
   shouldKeepCameraStreaming: (() => boolean) | undefined;
 
-  /** True while at least one HomeKit live-view session is open. */
-  get hasActiveSessions(): boolean {
-    return this.ongoingSessions.size > 0;
+  /**
+   * True while a HomeKit live view runs on the cloud stream, or is still
+   * choosing its source and may end up there.
+   */
+  get hasCloudOrStartingSessions(): boolean {
+    if (this.startingSessions.size > 0) return true;
+    for (const session of this.ongoingSessions.values()) {
+      if (session.source === 'cloud') return true;
+    }
+    return false;
   }
 
   constructor(
@@ -348,10 +359,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    this.startingSessions.add(request.sessionID);
     let streamInfo;
     try {
       streamInfo = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
     } catch (err) {
+      this.startingSessions.delete(request.sessionID);
       this.log.error(`[${this.cameraName}] Failed to get stream source:`, err);
       callback(err as Error);
       return;
@@ -362,6 +375,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     // not end it; fail the start here instead of launching FFmpeg.
     if (this.isCameraOff) {
       this.log.debug(`[${this.cameraName}] Camera switched off while the live view was being prepared`);
+      this.startingSessions.delete(request.sessionID);
       this.pendingSessions.delete(request.sessionID);
       callback(new Error('Camera is switched off'));
       return;
@@ -437,7 +451,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     ffmpegArgs.push('-progress', 'pipe:1');
 
-    const activeSession: ActiveSession = {};
+    const activeSession: ActiveSession = { source: streamInfo.type };
 
     // RTCP feedback socket for stream health monitoring
     activeSession.socket = createSocket(sessionInfo.ipv6 ? 'udp6' : 'udp4');
@@ -473,6 +487,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     }
 
     this.ongoingSessions.set(request.sessionID, activeSession);
+    this.startingSessions.delete(request.sessionID);
     this.pendingSessions.delete(request.sessionID);
     callback();
   }
