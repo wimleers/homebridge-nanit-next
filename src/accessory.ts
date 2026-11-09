@@ -107,13 +107,14 @@ export class NanitCameraAccessory {
         cameraInfo.babyUid,
         streamResolver,
         wsClient,
+        () => this.streamingDelegate.hasActiveSessions,
       );
     }
 
     const prebuf = this.prebuffer;
     const keepAlive = this.keepAlive;
     this.streamingDelegate.shouldKeepCameraStreaming = () =>
-      (prebuf?.isActive ?? false) || (keepAlive?.isActive ?? false);
+      (prebuf?.isActive ?? false) || (keepAlive?.keepsCameraStreaming ?? false);
 
     this.accessory.configureController(this.streamingDelegate.controller);
 
